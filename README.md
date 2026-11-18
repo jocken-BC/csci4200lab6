@@ -41,19 +41,26 @@ Each Page Table Entry (`pte_t`) is 32 bits wide. The upper 20 bits hold the Phys
 
 ## Your Task
 
-Open the starter C file and implement the `translate_address` function:
+Open `mmu_sim.c` and implement the `translate_address` function:
 
 ```c
 status_code_t translate_address(mmu_t *mmu, vaddr_t vaddr, access_type_t access, 
                                 privilege_t mode, paddr_t *paddr_out);
 ```
 
+### Understanding Return Values & Out-Parameters
+Notice that `translate_address` returns a `status_code_t` rather than a `paddr_t`:
+* **Function Return Value (`status_code_t`):** Indicates *whether* the translation succeeded (`TRANSLATION_SUCCESS = 0`) or *which* specific hardware fault occurred (`FAULT_PAGE_FAULT`, `FAULT_PROTECTION_READ_ONLY`, or `FAULT_PROTECTION_SUPERVISOR_ONLY`). Because every 32-bit integer is a valid memory address (including `0x00000000`), we cannot reserve a special address value to signal errors.
+* **Pointer Parameter (`paddr_t *paddr_out`):** This is an **out-parameter**. The caller passes the memory address of a local variable (`&paddr`) into the function. 
+  * **When translation succeeds:** Dereference the pointer (`*paddr_out = ...`) to store the computed 32-bit physical address, then return `TRANSLATION_SUCCESS`.
+  * **When a fault occurs:** Return the appropriate negative fault code immediately; you do not need to write to `*paddr_out`.
+
 ### Step-by-Step Translation Logic
 1. **Extract Virtual Address Fields:**
    * Isolate the 12-bit **VPO** and the 20-bit **VPN** from `vaddr` using the provided shift and mask constants.
 2. **Locate the Page Table Entry (PTE):**
    * The page table begins at `mmu->ram + mmu->pt_paddr`.
-   * Cast this location to a `pte_t *` array and index into it using the `VPN`. *(Note: Ensure you handle out-of-bounds VPNs safely if applicable, or index directly into the allocated page table).*
+   * Cast this location to a `pte_t *` array and index into it using the `VPN`.
 3. **Check the Valid Bit:**
    * If `PTE_VALID` is `0`, return `FAULT_PAGE_FAULT`.
 4. **Enforce Memory Protection (in order):**
@@ -63,18 +70,17 @@ status_code_t translate_address(mmu_t *mmu, vaddr_t vaddr, access_type_t access,
    * Extract the upper 20 bits of the PTE (`pte & PPN_MASK`) and combine them with the `VPO`.
    * Write the resulting 32-bit physical address to `*paddr_out` and return `TRANSLATION_SUCCESS`.
 
-> **Important:** Do not modify `init_mmu`, `free_mmu`, `setup_sample_page_table`, `process_trace_file`, or `main` unless instructed otherwise.
+> **Important:** Do not modify `init_mmu`, `free_mmu`, `setup_sample_page_table`, `process_trace_file`, or `main`.
 
 ---
 
 ## Building and Running
 
 ### Compilation
-Compile the simulator with `gcc` using standard warning flags:
+Compile `mmu_sim.c` with `gcc` using strict warning flags:
 ```bash
-gcc -Wall -Wextra -Werror -g mmu_lab.c -o mmu_sim
+gcc -Wall -Wextra -Werror -g mmu_sim.c -o mmu_sim
 ```
-*(Replace `mmu_lab.c` with the actual filename of your source file.)*
 
 ### Running with a Trace File
 Run the compiled binary by passing a trace file with the `-t` flag:
@@ -121,6 +127,14 @@ VADDR        TYPE     PRIVILEGE    PADDR        STATUS / RESULT
 ---
 
 ## Common Pitfalls & Tips
+* **Dereferencing `paddr_out`:** Be sure to assign the translated address to `*paddr_out` (with the asterisk), not `paddr_out`. Assigning to `paddr_out` only changes your local copy of the pointer and leaves the caller's variable uninitialized.
 * **Operator Precedence:** Bitwise operators (`&`, `|`, `>>`) have lower precedence than comparison operators (`==`, `!=`). Always wrap bitwise expressions in parentheses (e.g., `if ((pte & PTE_VALID) == 0)`).
 * **Pointer Arithmetic:** `mmu->ram` is a `uint8_t *` (byte pointer), while `mmu->pt_paddr` is a byte offset. Once cast to `(pte_t *)`, indexing `pt[vpn]` automatically scales by `sizeof(pte_t)` (4 bytes).
 * **Fault Priority:** Always check `PTE_VALID` **before** checking `PTE_RW` or `PTE_US`. If a page is not valid, its protection bits are meaningless.
+
+---
+
+## Submission Instructions
+1. Verify that your code compiles cleanly with **zero warnings or errors** using `-Wall -Wextra -Werror`.
+2. Test your program thoroughly against both valid accesses and all three fault types (page fault, read-only write violation, and user-to-supervisor violation).
+3. Submit **only** your completed `mmu_sim.c` source file to the assignment dropbox on **Canvas** before the deadline. Do not upload compiled binaries, `.zip` archives, or trace files unless specifically requested.
