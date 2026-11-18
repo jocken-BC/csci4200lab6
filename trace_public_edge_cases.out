@@ -1,0 +1,14 @@
+
+VADDR        TYPE     PRIVILEGE    PADDR        STATUS / RESULT               
+--------------------------------------------------------------------------------
+0x00100000   READ     USER         0x00100000   [SUCCESS] Translated
+0x00100FFF   WRITE    USER         0x00100FFF   [SUCCESS] Translated
+0x00101000   READ     USER         0x00101000   [SUCCESS] Translated
+0x00101FFF   WRITE    USER         0x--------   [FAULT] Protection Violation (Write to Read-Only Page)
+0x00102000   READ     SUPERVISOR   0x00102000   [SUCCESS] Translated
+0x00102FFF   WRITE    SUPERVISOR   0x00102FFF   [SUCCESS] Translated
+0x00102123   READ     USER         0x--------   [FAULT] Protection Violation (User Access to Supervisor Page)
+0x00102456   WRITE    USER         0x--------   [FAULT] Protection Violation (User Access to Supervisor Page)
+0x00000000   READ     USER         0x--------   [FAULT] Page Fault (Page Not Present in Memory)
+0x00103000   READ     USER         0x--------   [FAULT] Page Fault (Page Not Present in Memory)
+0xFFFFF000   WRITE    SUPERVISOR   0x--------   [FAULT] Page Fault (Page Not Present in Memory)
