@@ -1,92 +1,126 @@
+# Virtual Memory Lab: 1-Level Page Table Address Translation
 
-# CSCI 4200 Computer Architecture
+## Overview
+In this lab, you will implement the core address translation logic of a simulated Memory Management Unit (MMU) modeled after Chapter 9 (*Virtual Memory*) of **Computer Systems: A Programmer's Perspective (CS:APP)**. 
 
-This will be the area to use in lab to write, compile, and run code to explore and reinforce
-concepts taught in class.
-
-## GCC Compiler Cheat Sheet (Basic C Programs)
-
-A quick guide on how to turn your C source code into a program you can actually run.
+Your task is to translate 32-bit virtual addresses into 32-bit physical addresses using a single-level page table stored in simulated physical RAM, while enforcing page validity and memory protection rules.
 
 ---
 
-### The 2-Step Workflow
+## System Architecture & Specifications
 
-To run a C program in Linux, you always do two things: **Compile** it, then **Run** it.
+### Address Space & Memory Layout
+* **Virtual Address Width:** 32 bits (`vaddr_t`)
+* **Physical Address Width:** 32 bits (`paddr_t`)
+* **Page Size:** 4 KB (`4096` bytes / 2¹² bytes)
+* **Simulated Physical RAM:** 16 MB (`RAM_SIZE`)
+* **Page Table Base Address (`mmu->pt_paddr`):** `0x00001000`
 
-#### 1. Compile the Code
-* **`gcc filename.c`**
-  * *What it does:* Compiles your C file. If it succeeds, it creates a default runnable file named `a.out`.
-* **`gcc filename.c -o program_name`**
-  * *What it does:* Compiles your file and names the output whatever you put after the `-o` flag (e.g., `gcc main.c -o myprogram`).
-  * *Tip:* **Always** use `-o` so you don't overwrite `a.out` every time!
+### 32-Bit Virtual Address Breakdown
+A 32-bit virtual address is split into two fields:
 
-#### 2. Run the Program
-* **`./a.out`**
-  * *What it does:* Runs the default output file. 
-* **`./program_name`**
-  * *What it does:* Runs your custom-named program.
-  * *Note:* The `./` tells Linux to look for the program inside your *current* folder.
+| Bits `31:12` (20 bits) | Bits `11:0` (12 bits) |
+| :--- | :--- |
+| **VPN** (Virtual Page Number) | **VPO** (Virtual Page Offset) |
 
----
+* **VPO (`VPO_MASK = 0x00000FFF`):** The byte offset within the 4 KB page. Because virtual and physical pages are the same size, PPO = VPO.
+* **VPN (`VPN_MASK = 0x000FFFFF`):** Used as an index into the single-level page table after right-shifting by `VPN_SHIFT` (`12`).
 
-### Catching Mistakes Early (Highly Recommended)
+### Page Table Entry (PTE) Format
+Each Page Table Entry (`pte_t`) is 32 bits wide. The upper 20 bits hold the Physical Page Number (aligned to a 4 KB boundary), and the lower 3 bits act as control and protection flags:
 
-* **`gcc -Wall filename.c -o program_name`**
-  * *What it does:* Enables **W**arn **all**. This forces `gcc` to print warnings for risky code that might crash later, even if it is technically valid C syntax.
-  * *Tip:* Always use `-Wall` to find bugs before running their code!
+| Bits `31:12` | Bits `11:3` | Bit `2` (`0x4`) | Bit `1` (`0x2`) | Bit `0` (`0x1`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **PPN** (`PPN_MASK = 0xFFFFF000`) | *Unused* | **U/S** (`PTE_US`) | **R/W** (`PTE_RW`) | **Valid** (`PTE_VALID`) |
 
----
-
-### Reading GCC Errors
-
-When `gcc` prints text after you try to compile, don't panic! Read it like a map:
-
-> **`main.c:5:10: error: expected ';' before 'return'`**
-
-* **`main.c`** = The file with the mistake.
-* **`5`** = The line number where `gcc` got confused.
-* **`10`** = The character character column on that line.
-* **`error:...`** = Exactly what went wrong.
+* **`PTE_VALID` (`0x1`):** `1` if the page is mapped in physical memory; `0` if unmapped (triggers a page fault).
+* **`PTE_RW` (`0x2`):** `1` if both `READ` and `WRITE` accesses are allowed; `0` if the page is **Read-Only**.
+* **`PTE_US` (`0x4`):** `1` if accessible by both `USER` and `SUPERVISOR` modes; `0` if restricted to **Supervisor-Only** mode.
 
 ---
 
-### Pro-Tips for Students
+## Your Task
 
-* **No news is good news:** If you type `gcc main.c` and the terminal just gives you a blank line, **it worked perfectly!** Linux only talks to you during compilation if there is a warning or an error.
-* **Stuck in a loop?** If your program runs and gets stuck in an infinite loop, press **`Ctrl + C`** in your terminal to forcefully stop it.
+Open the starter C file and implement the `translate_address` function:
+
+```c
+status_code_t translate_address(mmu_t *mmu, vaddr_t vaddr, access_type_t access, 
+                                privilege_t mode, paddr_t *paddr_out);
+```
+
+### Step-by-Step Translation Logic
+1. **Extract Virtual Address Fields:**
+   * Isolate the 12-bit **VPO** and the 20-bit **VPN** from `vaddr` using the provided shift and mask constants.
+2. **Locate the Page Table Entry (PTE):**
+   * The page table begins at `mmu->ram + mmu->pt_paddr`.
+   * Cast this location to a `pte_t *` array and index into it using the `VPN`. *(Note: Ensure you handle out-of-bounds VPNs safely if applicable, or index directly into the allocated page table).*
+3. **Check the Valid Bit:**
+   * If `PTE_VALID` is `0`, return `FAULT_PAGE_FAULT`.
+4. **Enforce Memory Protection (in order):**
+   * **Write Protection:** If `access == WRITE` and `PTE_RW` is `0`, return `FAULT_PROTECTION_READ_ONLY`.
+   * **Privilege Protection:** If `mode == USER` and `PTE_US` is `0`, return `FAULT_PROTECTION_SUPERVISOR_ONLY`.
+5. **Construct the Physical Address:**
+   * Extract the upper 20 bits of the PTE (`pte & PPN_MASK`) and combine them with the `VPO`.
+   * Write the resulting 32-bit physical address to `*paddr_out` and return `TRANSLATION_SUCCESS`.
+
+> **Important:** Do not modify `init_mmu`, `free_mmu`, `setup_sample_page_table`, `process_trace_file`, or `main` unless instructed otherwise.
 
 ---
 
-## Basic Linux Command Cheat Sheet
+## Building and Running
 
-A quick reference guide for essential Linux commands.
+### Compilation
+Compile the simulator with `gcc` using standard warning flags:
+```bash
+gcc -Wall -Wextra -Werror -g mmu_lab.c -o mmu_sim
+```
+*(Replace `mmu_lab.c` with the actual filename of your source file.)*
+
+### Running with a Trace File
+Run the compiled binary by passing a trace file with the `-t` flag:
+```bash
+./mmu_sim -t sample_trace.txt
+```
+
+### Trace File Format
+Each line in a trace file represents a single memory access formatted as:
+```text
+<virtual_address> <R|W> <U|S>
+```
+* `<virtual_address>`: 32-bit hex (e.g., `0x00100040`) or decimal address
+* `<R|W>`: Access type (`R` = Read, `W` = Write)
+* `<U|S>`: CPU privilege level (`U` = User mode, `S` = Supervisor mode)
+
+#### Example Trace & Pre-configured Mappings
+The starter code pre-populates four entries in `setup_sample_page_table`:
+* `VPN 0x00100` → `PPN 0x00100` (Valid, Read/Write, User)
+* `VPN 0x00101` → `PPN 0x00101` (Valid, Read-Only, User)
+* `VPN 0x00102` → `PPN 0x00102` (Valid, Read/Write, Supervisor-Only)
+* `VPN 0x00103` → Invalid (`0x00000000`)
+
+Given a sample trace file:
+```text
+0x00100024 R U
+0x00101008 W U
+0x00102100 R U
+0x00102100 W S
+0x00103000 R S
+```
+
+Your output should match:
+```text
+VADDR        TYPE     PRIVILEGE    PADDR        STATUS / RESULT               
+--------------------------------------------------------------------------------
+0x00100024   READ     USER         0x00100024   [SUCCESS] Translated
+0x00101008   WRITE    USER         0x--------   [FAULT] Protection Violation (Write to Read-Only Page)
+0x00102100   READ     USER         0x--------   [FAULT] Protection Violation (User Access to Supervisor Page)
+0x00102100   WRITE    SUPERVISOR   0x00102100   [SUCCESS] Translated
+0x00103000   READ     SUPERVISOR   0x--------   [FAULT] Page Fault (Page Not Present in Memory)
+```
 
 ---
 
-### Navigating Directories
-
-* **`pwd`** — Print Working Directory
-  * *What it does:* Shows the exact folder you are currently inside.
-* **`ls`** — List Files
-  * *What it does:* Shows a list of all files and folders in your current directory.
-  * *Tip:* Use `ls -l` to see extra details like file size and permissions.
-* **`cd [folder_name]`** — Change Directory
-  * *What it does:* Moves you into a specific folder.
-  * *Tip:* Type `cd ..` to go backward up one folder level.
-
----
-
-### Managing Files & Folders
-
-* **`mkdir [folder_name]`** — Make Directory
-  * *What it does:* Creates a brand new, empty folder.
-* **`touch [file_name]`** — Create File
-  * *What it does:* Creates a blank, empty file (e.g., `touch notes.txt`).
-* **`cp [source] [destination]`** — Copy
-  * *What it does:* Duplicates a file or folder to a new location.
-* **`mv [source] [destination]`** — Move or Rename
-  * *What it does:* Moves a file to a new folder, or changes its name.
-* **`rm [file_name]`** — Remove
-  * *What it does:* Deletes a file permanently.
-  * *Warning:* Linux does not have a trash bin. Deleted files are gone instantly!
+## Common Pitfalls & Tips
+* **Operator Precedence:** Bitwise operators (`&`, `|`, `>>`) have lower precedence than comparison operators (`==`, `!=`). Always wrap bitwise expressions in parentheses (e.g., `if ((pte & PTE_VALID) == 0)`).
+* **Pointer Arithmetic:** `mmu->ram` is a `uint8_t *` (byte pointer), while `mmu->pt_paddr` is a byte offset. Once cast to `(pte_t *)`, indexing `pt[vpn]` automatically scales by `sizeof(pte_t)` (4 bytes).
+* **Fault Priority:** Always check `PTE_VALID` **before** checking `PTE_RW` or `PTE_US`. If a page is not valid, its protection bits are meaningless.
